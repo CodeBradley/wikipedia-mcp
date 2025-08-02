@@ -26,6 +26,14 @@ The Wikipedia MCP server provides real-time access to Wikipedia information thro
 - **Section Extraction**: Retrieve specific sections from articles
 - **Link Discovery**: Find links within articles to related topics
 - **Related Topics**: Discover topics related to a specific article
+- **Revision History**: Access complete edit history of Wikipedia pages with user details and changes
+- **User Contributions**: Track all contributions made by specific Wikipedia users
+- **Revision Comparison**: Compare different versions of articles to see what changed
+- **Page Creator Discovery**: Find out who originally created a Wikipedia page
+- **Talk Page Access**: Retrieve Wikipedia talk pages and discussion content
+- **Edit Spike Detection**: Statistically detect periods of unusual editing activity using z-scores
+- **Significance Analysis**: Identify the most important edits using weighted scoring algorithms
+- **Controversy Detection**: Discover edit wars, reverts, and contentious periods in article history
 - **Multi-language Support**: Access Wikipedia in different languages by specifying the `--language` or `-l` argument when running the server (e.g., `wikipedia-mcp --language ta` for Tamil).
 - **Country/Locale Support**: Use intuitive country codes like `--country US`, `--country China`, or `--country TW` instead of language codes. Automatically maps to appropriate Wikipedia language variants.
 - **Language Variant Support**: Support for language variants such as Chinese traditional/simplified (e.g., `zh-hans` for Simplified Chinese, `zh-tw` for Traditional Chinese), Serbian scripts (`sr-latn`, `sr-cyrl`), and other regional variants.
@@ -295,6 +303,107 @@ Extract key facts from a Wikipedia article, optionally focused on a specific top
 **Returns:**
 - A dictionary containing the title, topic, and a list of extracted facts
 
+### `get_page_revisions`
+
+Get the complete revision history for a Wikipedia page.
+
+**Parameters:**
+- `title` (string): The title of the Wikipedia article
+- `limit` (integer, optional): Maximum number of revisions to return (default: 50)
+
+**Returns:**
+- A dictionary containing revision history with user information, timestamps, comments, and size changes
+
+### `get_user_contributions`
+
+Get all contributions made by a specific Wikipedia user.
+
+**Parameters:**
+- `username` (string): The username to get contributions for
+- `limit` (integer, optional): Maximum number of contributions to return (default: 50)
+
+**Returns:**
+- A dictionary containing user contributions across different pages
+
+### `get_user_info`
+
+Get detailed information and statistics about a Wikipedia user.
+
+**Parameters:**
+- `username` (string): The username to get information for
+
+**Returns:**
+- A dictionary containing user registration date, edit count, user groups, and block status
+
+### `compare_revisions`
+
+Compare two specific revisions of a Wikipedia page.
+
+**Parameters:**
+- `from_rev` (integer): The older revision ID
+- `to_rev` (integer): The newer revision ID
+
+**Returns:**
+- A dictionary containing the comparison with differences between versions
+
+### `get_page_creator`
+
+Find who originally created a Wikipedia page.
+
+**Parameters:**
+- `title` (string): The title of the Wikipedia article
+
+**Returns:**
+- A dictionary containing information about the page creator and first revision
+
+### `get_revision_details`
+
+Get detailed information about a specific revision.
+
+**Parameters:**
+- `revid` (integer): The revision ID to get details for
+
+**Returns:**
+- A dictionary containing full content and metadata for the revision
+
+### `get_talk_page`
+
+Get the content and metadata of a Wikipedia talk page.
+
+**Parameters:**
+- `title` (string): The title of the Wikipedia article (talk page will be auto-derived)
+
+**Returns:**
+- A dictionary containing talk page content, metadata, and discussion structure
+
+### `analyze_edit_activity`
+
+Analyze edit activity patterns and detect spikes using statistical methods.
+
+**Parameters:**
+- `title` (string): The title of the Wikipedia article
+- `start_datetime` (string, optional): Start datetime in ISO format (e.g., "2024-01-15T14:30:00Z")
+- `end_datetime` (string, optional): End datetime in ISO format. Defaults to now if not specified
+- `window_size` (string, optional): Time window for grouping ("day", "week", "month") - default: "day"
+- `z_threshold` (float, optional): Z-score threshold for spike detection (default: 2.0 = top 2.5%)
+
+**Returns:**
+- A dictionary containing activity analysis, statistical measures, and detected spikes
+
+### `get_significant_revisions`
+
+Get the most significant revisions based on weighted scoring algorithm.
+
+**Parameters:**
+- `title` (string): The title of the Wikipedia article
+- `start_datetime` (string, optional): Start datetime in ISO format
+- `end_datetime` (string, optional): End datetime in ISO format
+- `limit` (integer, optional): Maximum number of significant revisions to return (default: 50)
+- `min_significance` (float, optional): Minimum significance score (0.0-1.0) to include (default: 0.5)
+
+**Returns:**
+- A dictionary containing ranked significant revisions with detailed scoring factors
+
 ## Country/Locale Support
 
 The Wikipedia MCP server supports intuitive country and region codes as an alternative to language codes. This makes it easier to access region-specific Wikipedia content without needing to know language codes.
@@ -503,6 +612,87 @@ wikipedia-mcp
   - `test_basic.py`: Basic package tests
   - `test_cli.py`: Command-line interface tests
   - `test_server_tools.py`: Comprehensive server and tool tests
+
+## Example Usage Scenarios
+
+### Investigating Article History
+
+To understand how a Wikipedia article evolved over time:
+
+1. **Get revision history**: Use `get_page_revisions` to see recent edits
+   - Shows who made changes, when, and what they changed
+   - Includes edit summaries and size changes
+
+2. **Find the original creator**: Use `get_page_creator` to discover who started the article
+   - Returns the first revision and author information
+
+3. **Compare versions**: Use `compare_revisions` with revision IDs to see specific changes
+   - Shows detailed differences between any two versions
+
+### Analyzing User Contributions
+
+To research a Wikipedia editor's work:
+
+1. **Get user statistics**: Use `get_user_info` to see their profile
+   - Shows edit count, registration date, user groups
+   - Indicates if the user is blocked
+
+2. **Review contributions**: Use `get_user_contributions` to see their edits
+   - Lists all pages they've edited with timestamps
+   - Shows the size and nature of their changes
+
+3. **Examine specific edits**: Use `get_revision_details` with revision IDs from their contributions
+   - Retrieves the full content of their edits
+
+### Example Tool Combinations
+
+**Research a controversial topic's edit history:**
+```
+1. search_wikipedia("controversial topic")
+2. get_page_revisions("Article Title", limit=100)
+3. compare_revisions(older_revid, newer_revid) for major changes
+4. get_user_info("username") for frequent editors
+```
+
+**Verify article reliability:**
+```
+1. get_page_creator("Article Title")
+2. get_user_info("creator_username")
+3. get_page_revisions("Article Title", limit=20)
+4. Check edit patterns and contributor diversity
+```
+
+**Detect and investigate controversies/edit wars:**
+```
+1. analyze_edit_activity("Controversial Topic", z_threshold=2.0)
+2. For detected spikes, use get_significant_revisions() to find major edits
+3. get_talk_page("Controversial Topic") to see discussions
+4. compare_revisions() for specific conflicts
+5. get_user_info() for key editors involved
+```
+
+### Advanced Controversy Detection
+
+The new analysis tools enable sophisticated detection of Wikipedia controversies:
+
+**Spike Detection Algorithm:**
+- Uses statistical z-scores (standard deviations) to identify unusual activity
+- Detects both edit count spikes and editor count spikes
+- Configurable sensitivity (z_threshold parameter)
+
+**Significance Scoring:**
+- **30%** - Normalized byte changes (size of edit relative to article size)
+- **25%** - Revert proximity (how quickly edit was reversed)
+- **20%** - Editor experience (new vs. established editors)
+- **15%** - Discussion references (mentions of talk pages, disputes)
+- **10%** - Edit war patterns (rapid back-and-forth edits)
+
+**Use Cases:**
+- Identify controversial topics and periods
+- Analyze edit wars and vandalism patterns
+- Research significant historical events in Wikipedia
+- Track how articles evolve during breaking news
+- Study editor behavior and conflict resolution
 
 ## Testing
 

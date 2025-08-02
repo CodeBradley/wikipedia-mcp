@@ -644,4 +644,835 @@ class WikipediaClient:
 
         except Exception as e:
             logger.error(f"Error extracting key facts for '{title}': {e}")
-            return [f"Error extracting key facts for '{title}': {str(e)}"] 
+            return [f"Error extracting key facts for '{title}': {str(e)}"]
+
+    def get_page_revisions(self, title: str, limit: int = 50) -> Dict[str, Any]:
+        """Get the revision history of a Wikipedia page.
+        
+        Args:
+            title: The title of the Wikipedia article.
+            limit: Maximum number of revisions to return (default: 50).
+            
+        Returns:
+            A dictionary containing revision history.
+        """
+        params = {
+            'action': 'query',
+            'format': 'json',
+            'prop': 'revisions',
+            'titles': title,
+            'utf8': 1,
+            'rvlimit': limit,
+            'rvprop': 'ids|timestamp|user|userid|comment|size|sha1|flags',
+            'rvdir': 'older'  # Get newest revisions first
+        }
+        
+        # Add variant parameter if needed
+        params = self._add_variant_to_params(params)
+        
+        try:
+            response = requests.get(self.api_url, params=params)
+            response.raise_for_status()
+            data = response.json()
+            
+            pages = data.get('query', {}).get('pages', {})
+            page_id = list(pages.keys())[0] if pages else None
+            
+            if not page_id or page_id == '-1':
+                return {
+                    'title': title,
+                    'exists': False,
+                    'error': 'Page does not exist'
+                }
+            
+            page_data = pages[page_id]
+            revisions = page_data.get('revisions', [])
+            
+            # Process revisions to add size change info
+            for i, rev in enumerate(revisions):
+                if i < len(revisions) - 1:
+                    rev['sizediff'] = rev['size'] - revisions[i + 1]['size']
+                else:
+                    # For the oldest revision in this batch, we can't calculate size diff
+                    rev['sizediff'] = None
+            
+            return {
+                'title': page_data.get('title', title),
+                'pageid': page_data.get('pageid'),
+                'revisions': revisions,
+                'exists': True
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting page revisions: {e}")
+            return {
+                'title': title,
+                'exists': False,
+                'error': str(e)
+            }
+
+    def get_user_contributions(self, username: str, limit: int = 50) -> Dict[str, Any]:
+        """Get contributions made by a specific user.
+        
+        Args:
+            username: The username to get contributions for.
+            limit: Maximum number of contributions to return (default: 50).
+            
+        Returns:
+            A dictionary containing user contributions.
+        """
+        params = {
+            'action': 'query',
+            'format': 'json',
+            'list': 'usercontribs',
+            'ucuser': username,
+            'uclimit': limit,
+            'ucprop': 'ids|title|timestamp|comment|size|sizediff|flags|tags',
+            'ucdir': 'older'  # Get newest contributions first
+        }
+        
+        # Add variant parameter if needed
+        params = self._add_variant_to_params(params)
+        
+        try:
+            response = requests.get(self.api_url, params=params)
+            response.raise_for_status()
+            data = response.json()
+            
+            contributions = data.get('query', {}).get('usercontribs', [])
+            
+            return {
+                'username': username,
+                'contributions': contributions,
+                'count': len(contributions)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting user contributions: {e}")
+            return {
+                'username': username,
+                'contributions': [],
+                'error': str(e)
+            }
+
+    def get_user_info(self, username: str) -> Dict[str, Any]:
+        """Get detailed information about a Wikipedia user.
+        
+        Args:
+            username: The username to get information for.
+            
+        Returns:
+            A dictionary containing user information.
+        """
+        params = {
+            'action': 'query',
+            'format': 'json',
+            'list': 'users',
+            'ususers': username,
+            'usprop': 'blockinfo|groups|editcount|registration|emailable|gender'
+        }
+        
+        # Add variant parameter if needed
+        params = self._add_variant_to_params(params)
+        
+        try:
+            response = requests.get(self.api_url, params=params)
+            response.raise_for_status()
+            data = response.json()
+            
+            users = data.get('query', {}).get('users', [])
+            
+            if not users:
+                return {
+                    'username': username,
+                    'exists': False,
+                    'error': 'User not found'
+                }
+            
+            user_data = users[0]
+            
+            # Check if user exists (missing = user doesn't exist)
+            if 'missing' in user_data:
+                return {
+                    'username': username,
+                    'exists': False,
+                    'error': 'User does not exist'
+                }
+            
+            return {
+                'username': user_data.get('name', username),
+                'userid': user_data.get('userid'),
+                'registration': user_data.get('registration'),
+                'editcount': user_data.get('editcount', 0),
+                'groups': user_data.get('groups', []),
+                'gender': user_data.get('gender', 'unknown'),
+                'emailable': user_data.get('emailable', False),
+                'blocked': 'blockid' in user_data,
+                'blockreason': user_data.get('blockreason'),
+                'exists': True
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting user info: {e}")
+            return {
+                'username': username,
+                'exists': False,
+                'error': str(e)
+            }
+
+    def compare_revisions(self, from_rev: int, to_rev: int) -> Dict[str, Any]:
+        """Compare two revisions of a Wikipedia page.
+        
+        Args:
+            from_rev: The older revision ID.
+            to_rev: The newer revision ID.
+            
+        Returns:
+            A dictionary containing the comparison results.
+        """
+        params = {
+            'action': 'compare',
+            'format': 'json',
+            'fromrev': from_rev,
+            'torev': to_rev,
+            'prop': 'diff|diffsize|rel|ids|title|user|comment|size'
+        }
+        
+        # Add variant parameter if needed
+        params = self._add_variant_to_params(params)
+        
+        try:
+            response = requests.get(self.api_url, params=params)
+            response.raise_for_status()
+            data = response.json()
+            
+            compare_data = data.get('compare', {})
+            
+            if 'error' in data:
+                return {
+                    'error': data['error'].get('info', 'Unknown error'),
+                    'from_rev': from_rev,
+                    'to_rev': to_rev
+                }
+            
+            return {
+                'from_rev': {
+                    'id': compare_data.get('fromid'),
+                    'timestamp': compare_data.get('fromtimestamp'),
+                    'user': compare_data.get('fromuser'),
+                    'comment': compare_data.get('fromcomment'),
+                    'size': compare_data.get('fromsize')
+                },
+                'to_rev': {
+                    'id': compare_data.get('toid'),
+                    'timestamp': compare_data.get('totimestamp'),
+                    'user': compare_data.get('touser'),
+                    'comment': compare_data.get('tocomment'),
+                    'size': compare_data.get('tosize')
+                },
+                'title': compare_data.get('totitle'),
+                'diff_size': compare_data.get('diffsize'),
+                'diff_html': compare_data.get('body', '')  # HTML diff content
+            }
+            
+        except Exception as e:
+            logger.error(f"Error comparing revisions: {e}")
+            return {
+                'error': str(e),
+                'from_rev': from_rev,
+                'to_rev': to_rev
+            }
+
+    def get_page_creator(self, title: str) -> Dict[str, Any]:
+        """Get information about who created a Wikipedia page.
+        
+        Args:
+            title: The title of the Wikipedia article.
+            
+        Returns:
+            A dictionary containing page creator information.
+        """
+        params = {
+            'action': 'query',
+            'format': 'json',
+            'prop': 'revisions',
+            'titles': title,
+            'utf8': 1,
+            'rvlimit': 1,
+            'rvprop': 'ids|timestamp|user|userid|comment|size',
+            'rvdir': 'newer'  # Get the first (oldest) revision
+        }
+        
+        # Add variant parameter if needed
+        params = self._add_variant_to_params(params)
+        
+        try:
+            response = requests.get(self.api_url, params=params)
+            response.raise_for_status()
+            data = response.json()
+            
+            pages = data.get('query', {}).get('pages', {})
+            page_id = list(pages.keys())[0] if pages else None
+            
+            if not page_id or page_id == '-1':
+                return {
+                    'title': title,
+                    'exists': False,
+                    'error': 'Page does not exist'
+                }
+            
+            page_data = pages[page_id]
+            revisions = page_data.get('revisions', [])
+            
+            if not revisions:
+                return {
+                    'title': title,
+                    'exists': True,
+                    'error': 'No revision data available'
+                }
+            
+            first_revision = revisions[0]
+            
+            return {
+                'title': page_data.get('title', title),
+                'pageid': page_data.get('pageid'),
+                'creator': {
+                    'username': first_revision.get('user'),
+                    'userid': first_revision.get('userid'),
+                    'timestamp': first_revision.get('timestamp'),
+                    'comment': first_revision.get('comment', ''),
+                    'initial_size': first_revision.get('size', 0),
+                    'revid': first_revision.get('revid')
+                },
+                'exists': True
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting page creator: {e}")
+            return {
+                'title': title,
+                'exists': False,
+                'error': str(e)
+            }
+
+    def get_revision_details(self, revid: int) -> Dict[str, Any]:
+        """Get detailed information about a specific revision.
+        
+        Args:
+            revid: The revision ID to get details for.
+            
+        Returns:
+            A dictionary containing revision details.
+        """
+        params = {
+            'action': 'query',
+            'format': 'json',
+            'prop': 'revisions',
+            'revids': revid,
+            'rvprop': 'ids|timestamp|user|userid|comment|size|sha1|flags|content',
+            'rvslots': 'main'
+        }
+        
+        # Add variant parameter if needed
+        params = self._add_variant_to_params(params)
+        
+        try:
+            response = requests.get(self.api_url, params=params)
+            response.raise_for_status()
+            data = response.json()
+            
+            pages = data.get('query', {}).get('pages', {})
+            
+            if not pages:
+                return {
+                    'revid': revid,
+                    'exists': False,
+                    'error': 'Revision not found'
+                }
+            
+            page_id = list(pages.keys())[0]
+            page_data = pages[page_id]
+            
+            if 'missing' in page_data:
+                return {
+                    'revid': revid,
+                    'exists': False,
+                    'error': 'Page does not exist'
+                }
+            
+            revisions = page_data.get('revisions', [])
+            
+            if not revisions:
+                return {
+                    'revid': revid,
+                    'exists': False,
+                    'error': 'Revision not found'
+                }
+            
+            revision = revisions[0]
+            
+            # Extract content if available
+            content = None
+            if 'slots' in revision and 'main' in revision['slots']:
+                content = revision['slots']['main'].get('*', None)
+            
+            return {
+                'revid': revision.get('revid'),
+                'parentid': revision.get('parentid'),
+                'title': page_data.get('title'),
+                'pageid': page_data.get('pageid'),
+                'timestamp': revision.get('timestamp'),
+                'user': revision.get('user'),
+                'userid': revision.get('userid'),
+                'comment': revision.get('comment', ''),
+                'size': revision.get('size', 0),
+                'sha1': revision.get('sha1'),
+                'minor': revision.get('minor', False),
+                'content': content,
+                'exists': True
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting revision details: {e}")
+            return {
+                'revid': revid,
+                'exists': False,
+                'error': str(e)
+            }
+
+    def get_talk_page(self, title: str) -> Dict[str, Any]:
+        """Get the content and metadata of a Wikipedia talk page.
+        
+        Args:
+            title: The title of the Wikipedia article (talk page will be auto-derived).
+            
+        Returns:
+            A dictionary containing talk page content and metadata.
+        """
+        # Convert article title to talk page title
+        if title.startswith('Talk:'):
+            talk_title = title
+        else:
+            talk_title = f"Talk:{title}"
+        
+        try:
+            # Get talk page content
+            page = self.wiki.page(talk_title)
+            
+            if not page.exists():
+                return {
+                    'title': talk_title,
+                    'article_title': title,
+                    'exists': False,
+                    'error': 'Talk page does not exist'
+                }
+            
+            # Extract discussion sections
+            sections = self._extract_sections(page.sections)
+            section_titles = [section['title'] for section in sections if section['title']]
+            
+            # Get talk page revisions for activity analysis
+            revisions_result = self.get_page_revisions(talk_title, limit=10)
+            recent_activity = len(revisions_result.get('revisions', [])) if revisions_result.get('exists') else 0
+            
+            return {
+                'title': talk_title,
+                'article_title': title,
+                'raw_content': page.text,
+                'summary': page.summary,
+                'url': page.fullurl,
+                'metadata': {
+                    'section_count': len(sections),
+                    'discussion_threads': section_titles,
+                    'last_modified': revisions_result.get('revisions', [{}])[0].get('timestamp') if revisions_result.get('revisions') else None,
+                    'recent_revisions': recent_activity,
+                    'categories': [cat for cat in page.categories.keys()],
+                    'size': len(page.text)
+                },
+                'exists': True
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting talk page: {e}")
+            return {
+                'title': talk_title,
+                'article_title': title,
+                'exists': False,
+                'error': str(e)
+            }
+
+    def analyze_edit_activity(self, title: str, start_datetime: Optional[str] = None, 
+                            end_datetime: Optional[str] = None, window_size: str = "day",
+                            z_threshold: float = 2.0) -> Dict[str, Any]:
+        """Analyze edit activity patterns and detect spikes using statistical methods.
+        
+        Args:
+            title: The title of the Wikipedia article.
+            start_datetime: Start datetime in ISO format (e.g., "2024-01-15T14:30:00Z").
+            end_datetime: End datetime in ISO format. Defaults to now if not specified.
+            window_size: Time window for grouping ("day", "week", "month").
+            z_threshold: Z-score threshold for spike detection (default: 2.0 = top 2.5%).
+            
+        Returns:
+            A dictionary containing activity analysis and detected spikes.
+        """
+        from datetime import datetime, timedelta
+        from collections import defaultdict
+        import statistics
+        
+        try:
+            # Get comprehensive revision history
+            all_revisions = []
+            limit = 500  # Get a large sample for statistical analysis
+            
+            # Get revisions in batches if needed
+            revisions_result = self.get_page_revisions(title, limit=limit)
+            if not revisions_result.get('exists'):
+                return {
+                    'title': title,
+                    'exists': False,
+                    'error': revisions_result.get('error', 'Page does not exist')
+                }
+            
+            all_revisions = revisions_result.get('revisions', [])
+            
+            # Parse timestamps and filter by date range
+            filtered_revisions = []
+            for rev in all_revisions:
+                try:
+                    rev_time = datetime.fromisoformat(rev['timestamp'].replace('Z', '+00:00'))
+                    
+                    # Apply date filters
+                    if start_datetime:
+                        start_time = datetime.fromisoformat(start_datetime.replace('Z', '+00:00'))
+                        if rev_time < start_time:
+                            continue
+                    
+                    if end_datetime:
+                        end_time = datetime.fromisoformat(end_datetime.replace('Z', '+00:00'))
+                        if rev_time > end_time:
+                            continue
+                    
+                    rev['parsed_timestamp'] = rev_time
+                    filtered_revisions.append(rev)
+                    
+                except Exception as e:
+                    logger.warning(f"Error parsing timestamp {rev.get('timestamp')}: {e}")
+                    continue
+            
+            # Group revisions by time window
+            grouped_activity = defaultdict(lambda: {'edit_count': 0, 'editors': set(), 'revisions': []})
+            
+            for rev in filtered_revisions:
+                timestamp = rev['parsed_timestamp']
+                
+                # Create time window key
+                if window_size == "day":
+                    window_key = timestamp.strftime('%Y-%m-%d')
+                elif window_size == "week":
+                    # Get Monday of the week
+                    monday = timestamp - timedelta(days=timestamp.weekday())
+                    window_key = monday.strftime('%Y-%m-%d-week')
+                elif window_size == "month":
+                    window_key = timestamp.strftime('%Y-%m')
+                else:
+                    window_key = timestamp.strftime('%Y-%m-%d')  # Default to day
+                
+                grouped_activity[window_key]['edit_count'] += 1
+                grouped_activity[window_key]['editors'].add(rev.get('user', 'Unknown'))
+                grouped_activity[window_key]['revisions'].append(rev)
+            
+            # Calculate statistics
+            edit_counts = [data['edit_count'] for data in grouped_activity.values()]
+            editor_counts = [len(data['editors']) for data in grouped_activity.values()]
+            
+            if len(edit_counts) < 3:  # Need at least 3 data points for meaningful statistics
+                return {
+                    'title': title,
+                    'analysis_period': f"{start_datetime or 'beginning'} to {end_datetime or 'now'}",
+                    'window_size': window_size,
+                    'total_windows': len(grouped_activity),
+                    'error': 'Insufficient data for statistical analysis (need at least 3 time windows)'
+                }
+            
+            # Statistical calculations
+            edit_mean = statistics.mean(edit_counts)
+            edit_stdev = statistics.stdev(edit_counts) if len(edit_counts) > 1 else 0
+            editor_mean = statistics.mean(editor_counts)
+            editor_stdev = statistics.stdev(editor_counts) if len(editor_counts) > 1 else 0
+            
+            # Detect spikes
+            spikes = []
+            for window_key, data in grouped_activity.items():
+                edit_z_score = (data['edit_count'] - edit_mean) / edit_stdev if edit_stdev > 0 else 0
+                editor_z_score = (len(data['editors']) - editor_mean) / editor_stdev if editor_stdev > 0 else 0
+                
+                if edit_z_score >= z_threshold or editor_z_score >= z_threshold:
+                    spikes.append({
+                        'window': window_key,
+                        'edit_count': data['edit_count'],
+                        'editor_count': len(data['editors']),
+                        'edit_z_score': round(edit_z_score, 2),
+                        'editor_z_score': round(editor_z_score, 2),
+                        'significance': 'high' if max(edit_z_score, editor_z_score) >= 3 else 'moderate',
+                        'editors': list(data['editors']),
+                        'sample_revisions': data['revisions'][:5]  # First 5 revisions as examples
+                    })
+            
+            # Sort spikes by significance
+            spikes.sort(key=lambda x: max(x['edit_z_score'], x['editor_z_score']), reverse=True)
+            
+            return {
+                'title': title,
+                'analysis_period': f"{start_datetime or 'beginning'} to {end_datetime or 'now'}",
+                'window_size': window_size,
+                'z_threshold': z_threshold,
+                'statistics': {
+                    'total_windows': len(grouped_activity),
+                    'total_revisions_analyzed': len(filtered_revisions),
+                    'edit_statistics': {
+                        'mean': round(edit_mean, 2),
+                        'stdev': round(edit_stdev, 2),
+                        'min': min(edit_counts),
+                        'max': max(edit_counts)
+                    },
+                    'editor_statistics': {
+                        'mean': round(editor_mean, 2),
+                        'stdev': round(editor_stdev, 2),
+                        'min': min(editor_counts),
+                        'max': max(editor_counts)
+                    }
+                },
+                'spikes_detected': len(spikes),
+                'spikes': spikes,
+                'exists': True
+            }
+            
+        except Exception as e:
+            logger.error(f"Error analyzing edit activity: {e}")
+            return {
+                'title': title,
+                'exists': False,
+                'error': str(e)
+            }
+
+    def get_significant_revisions(self, title: str, start_datetime: Optional[str] = None,
+                                end_datetime: Optional[str] = None, limit: int = 50,
+                                min_significance: float = 0.5) -> Dict[str, Any]:
+        """Get the most significant revisions based on weighted scoring algorithm.
+        
+        Args:
+            title: The title of the Wikipedia article.
+            start_datetime: Start datetime in ISO format (e.g., "2024-01-15T14:30:00Z").
+            end_datetime: End datetime in ISO format. Defaults to now if not specified.
+            limit: Maximum number of significant revisions to return.
+            min_significance: Minimum significance score (0.0-1.0) to include.
+            
+        Returns:
+            A dictionary containing ranked significant revisions with scores.
+        """
+        from datetime import datetime, timedelta
+        import re
+        
+        try:
+            # Get comprehensive revision history
+            revisions_result = self.get_page_revisions(title, limit=500)
+            if not revisions_result.get('exists'):
+                return {
+                    'title': title,
+                    'exists': False,
+                    'error': revisions_result.get('error', 'Page does not exist')
+                }
+            
+            all_revisions = revisions_result.get('revisions', [])
+            
+            # Filter by date range and add parsed timestamps
+            filtered_revisions = []
+            for rev in all_revisions:
+                try:
+                    rev_time = datetime.fromisoformat(rev['timestamp'].replace('Z', '+00:00'))
+                    
+                    # Apply date filters
+                    if start_datetime:
+                        start_time = datetime.fromisoformat(start_datetime.replace('Z', '+00:00'))
+                        if rev_time < start_time:
+                            continue
+                    
+                    if end_datetime:
+                        end_time = datetime.fromisoformat(end_datetime.replace('Z', '+00:00'))
+                        if rev_time > end_time:
+                            continue
+                    
+                    rev['parsed_timestamp'] = rev_time
+                    filtered_revisions.append(rev)
+                    
+                except Exception as e:
+                    logger.warning(f"Error parsing timestamp {rev.get('timestamp')}: {e}")
+                    continue
+            
+            if len(filtered_revisions) < 2:
+                return {
+                    'title': title,
+                    'analysis_period': f"{start_datetime or 'beginning'} to {end_datetime or 'now'}",
+                    'error': 'Insufficient revision data for significance analysis'
+                }
+            
+            # Calculate significance scores
+            scored_revisions = []
+            
+            # Get article size for normalization (from most recent revision)
+            current_size = filtered_revisions[0].get('size', 1000)  # Default fallback
+            
+            # Get user edit counts for experience factor
+            user_edit_counts = {}
+            for rev in filtered_revisions:
+                user = rev.get('user')
+                if user:
+                    user_edit_counts[user] = user_edit_counts.get(user, 0) + 1
+            
+            for i, rev in enumerate(filtered_revisions):
+                significance_score = self._calculate_significance_score(
+                    rev, filtered_revisions, i, current_size, user_edit_counts
+                )
+                
+                if significance_score >= min_significance:
+                    scored_revisions.append({
+                        **rev,
+                        'significance_score': round(significance_score, 3),
+                        'significance_factors': self._get_significance_factors(
+                            rev, filtered_revisions, i, current_size, user_edit_counts
+                        )
+                    })
+            
+            # Sort by significance score
+            scored_revisions.sort(key=lambda x: x['significance_score'], reverse=True)
+            
+            # Limit results
+            top_revisions = scored_revisions[:limit]
+            
+            return {
+                'title': title,
+                'analysis_period': f"{start_datetime or 'beginning'} to {end_datetime or 'now'}",
+                'total_revisions_analyzed': len(filtered_revisions),
+                'significant_revisions_found': len(scored_revisions),
+                'min_significance_threshold': min_significance,
+                'top_revisions': top_revisions,
+                'exists': True
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting significant revisions: {e}")
+            return {
+                'title': title,
+                'exists': False,
+                'error': str(e)
+            }
+
+    def _calculate_significance_score(self, revision: Dict[str, Any], all_revisions: List[Dict[str, Any]], 
+                                    index: int, article_size: int, user_edit_counts: Dict[str, int]) -> float:
+        """Calculate significance score using weighted algorithm."""
+        import re
+        from datetime import timedelta
+        
+        score = 0.0
+        
+        # 1. Normalized bytes change (30% weight)
+        size_change = abs(revision.get('sizediff', 0))
+        normalized_size_change = min(size_change / max(article_size * 0.1, 100), 1.0)  # Cap at reasonable %
+        score += 0.30 * normalized_size_change
+        
+        # 2. Revert proximity score (25% weight)
+        revert_score = self._calculate_revert_score(revision, all_revisions, index)
+        score += 0.25 * revert_score
+        
+        # 3. Editor experience factor (20% weight)
+        user = revision.get('user', '')
+        user_edits = user_edit_counts.get(user, 1)
+        # New editors (fewer edits) have higher impact potential
+        experience_factor = min(1.0, 5.0 / max(user_edits, 1))
+        score += 0.20 * experience_factor
+        
+        # 4. Discussion reference score (15% weight)
+        comment = revision.get('comment', '').lower()
+        discussion_patterns = [
+            'talk page', 'discuss', 'see talk', 'talk:', 'consensus',
+            'dispute', 'controversial', 'revert', 'vandalism', 'rv'
+        ]
+        discussion_score = min(sum(1 for pattern in discussion_patterns if pattern in comment) * 0.2, 1.0)
+        score += 0.15 * discussion_score
+        
+        # 5. Edit war indicator (10% weight)
+        edit_war_score = self._calculate_edit_war_score(revision, all_revisions, index)
+        score += 0.10 * edit_war_score
+        
+        return min(score, 1.0)  # Cap at 1.0
+    
+    def _calculate_revert_score(self, revision: Dict[str, Any], all_revisions: List[Dict[str, Any]], index: int) -> float:
+        """Calculate score based on how quickly a revision was reverted."""
+        from datetime import timedelta
+        
+        # Check if this revision was reverted in subsequent edits
+        rev_time = revision.get('parsed_timestamp')
+        rev_size = revision.get('size', 0)
+        
+        # Look at next few revisions for potential reverts
+        for i in range(index - 5, index):  # Look at 5 previous revisions (more recent)
+            if i < 0 or i >= len(all_revisions):
+                continue
+                
+            next_rev = all_revisions[i]
+            next_time = next_rev.get('parsed_timestamp')
+            next_size = next_rev.get('size', 0)
+            
+            if not next_time or not rev_time:
+                continue
+            
+            time_diff = abs((next_time - rev_time).total_seconds())
+            size_diff = abs(next_size - rev_size)
+            
+            # If size returned close to original within short time, likely a revert
+            if time_diff < 3600 and size_diff < 50:  # Within 1 hour, similar size
+                # Faster reverts = higher significance
+                revert_score = max(0, 1.0 - (time_diff / 3600))
+                return revert_score
+        
+        return 0.0
+    
+    def _calculate_edit_war_score(self, revision: Dict[str, Any], all_revisions: List[Dict[str, Any]], index: int) -> float:
+        """Calculate score based on edit war patterns."""
+        # Look for rapid back-and-forth edits
+        rev_time = revision.get('parsed_timestamp')
+        if not rev_time:
+            return 0.0
+        
+        # Count edits within 24 hours around this revision
+        rapid_edits = 0
+        for other_rev in all_revisions:
+            other_time = other_rev.get('parsed_timestamp')
+            if not other_time:
+                continue
+            
+            time_diff = abs((other_time - rev_time).total_seconds())
+            if time_diff <= 86400:  # Within 24 hours
+                rapid_edits += 1
+        
+        # More rapid edits = higher edit war score
+        return min(rapid_edits / 20.0, 1.0)  # Normalize to 20 edits = max score
+    
+    def _get_significance_factors(self, revision: Dict[str, Any], all_revisions: List[Dict[str, Any]], 
+                                index: int, article_size: int, user_edit_counts: Dict[str, int]) -> Dict[str, Any]:
+        """Get detailed breakdown of significance factors for transparency."""
+        size_change = abs(revision.get('sizediff', 0))
+        user = revision.get('user', '')
+        comment = revision.get('comment', '')
+        
+        return {
+            'size_change_bytes': revision.get('sizediff', 0),
+            'normalized_size_impact': min(size_change / max(article_size * 0.1, 100), 1.0),
+            'user_experience_level': user_edit_counts.get(user, 1),
+            'has_discussion_keywords': any(keyword in comment.lower() 
+                                         for keyword in ['talk', 'discuss', 'revert', 'dispute']),
+            'edit_comment': comment,
+            'timestamp': revision.get('timestamp'),
+            'user': user
+        } 

@@ -15,6 +15,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Google ADK Compatibility Tests**: Added comprehensive tests to ensure all tool schemas remain compatible with Google ADK agents.
+- **Revision History Tools**: Added six new MCP tools for accessing Wikipedia revision history and user contribution data:
+  - `get_page_revisions`: Get complete revision history for a Wikipedia page with user info, timestamps, and changes
+  - `get_user_contributions`: Track all contributions made by a specific Wikipedia user across different pages
+  - `get_user_info`: Get detailed statistics about a Wikipedia user including edit count, groups, and registration date
+  - `compare_revisions`: Compare two specific revisions to see differences between versions
+  - `get_page_creator`: Find who originally created a Wikipedia page
+  - `get_revision_details`: Get detailed information about a specific revision including full content
+- **Revision History Resources**: Added corresponding MCP resources for REST-style access to revision history functionality
+- **Comprehensive Tests**: Added test suite for all new revision history and user contribution features
+- **Talk Page Tools**: Added `get_talk_page` tool to retrieve Wikipedia talk pages with discussion content and metadata structure
+- **Edit Activity Analysis**: Added `analyze_edit_activity` tool with statistical spike detection using z-scores to identify periods of unusual editing activity
+- **Significance Analysis**: Added `get_significant_revisions` tool with weighted scoring algorithm (30% byte changes, 25% revert proximity, 20% editor experience, 15% discussion references, 10% edit war patterns)
+- **Controversy Detection**: Comprehensive toolset for detecting Wikipedia edit wars, conflicts, and contentious periods through statistical analysis
+- **Advanced Analytics**: Support for granular datetime parameters, configurable sensitivity thresholds, and detailed significance factor breakdowns
+- **Integration Tests**: Added extensive test suite covering talk pages, spike detection algorithms, significance scoring, and controversy detection workflows
 
 ## [1.5.5] - 2024-07-26
 

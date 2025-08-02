@@ -115,6 +115,87 @@ def create_server(language: str = "en", country: Optional[str] = None, enable_ca
             "links": links
         }
 
+    @server.tool()
+    def get_page_revisions(title: str, limit: int = 50) -> Dict[str, Any]:
+        """Get the complete revision history for a Wikipedia page."""
+        logger.info(f"Tool: Getting revision history for: {title}, limit: {limit}")
+        revisions = wikipedia_client.get_page_revisions(title, limit=limit)
+        return revisions
+
+    @server.tool()
+    def get_user_contributions(username: str, limit: int = 50) -> Dict[str, Any]:
+        """Get all contributions made by a specific Wikipedia user."""
+        logger.info(f"Tool: Getting contributions for user: {username}, limit: {limit}")
+        contributions = wikipedia_client.get_user_contributions(username, limit=limit)
+        return contributions
+
+    @server.tool()
+    def get_user_info(username: str) -> Dict[str, Any]:
+        """Get detailed information and statistics about a Wikipedia user."""
+        logger.info(f"Tool: Getting user info for: {username}")
+        user_info = wikipedia_client.get_user_info(username)
+        return user_info
+
+    @server.tool()
+    def compare_revisions(from_rev: int, to_rev: int) -> Dict[str, Any]:
+        """Compare two specific revisions of a Wikipedia page."""
+        logger.info(f"Tool: Comparing revisions from {from_rev} to {to_rev}")
+        comparison = wikipedia_client.compare_revisions(from_rev, to_rev)
+        return comparison
+
+    @server.tool()
+    def get_page_creator(title: str) -> Dict[str, Any]:
+        """Find who originally created a Wikipedia page."""
+        logger.info(f"Tool: Getting page creator for: {title}")
+        creator = wikipedia_client.get_page_creator(title)
+        return creator
+
+    @server.tool()
+    def get_revision_details(revid: int) -> Dict[str, Any]:
+        """Get detailed information about a specific revision."""
+        logger.info(f"Tool: Getting details for revision: {revid}")
+        details = wikipedia_client.get_revision_details(revid)
+        return details
+
+    @server.tool()
+    def get_talk_page(title: str) -> Dict[str, Any]:
+        """Get the content and metadata of a Wikipedia talk page."""
+        logger.info(f"Tool: Getting talk page for: {title}")
+        talk_page = wikipedia_client.get_talk_page(title)
+        return talk_page
+
+    @server.tool()
+    def analyze_edit_activity(title: str, start_datetime: str = "", end_datetime: str = "", 
+                            window_size: str = "day", z_threshold: float = 2.0) -> Dict[str, Any]:
+        """Analyze edit activity patterns and detect spikes using statistical methods."""
+        logger.info(f"Tool: Analyzing edit activity for: {title}, window: {window_size}, z_threshold: {z_threshold}")
+        
+        # Convert empty strings to None for optional parameters
+        start_dt = start_datetime if start_datetime.strip() else None
+        end_dt = end_datetime if end_datetime.strip() else None
+        
+        analysis = wikipedia_client.analyze_edit_activity(
+            title, start_datetime=start_dt, end_datetime=end_dt, 
+            window_size=window_size, z_threshold=z_threshold
+        )
+        return analysis
+
+    @server.tool()
+    def get_significant_revisions(title: str, start_datetime: str = "", end_datetime: str = "",
+                                limit: int = 50, min_significance: float = 0.5) -> Dict[str, Any]:
+        """Get the most significant revisions based on weighted scoring algorithm."""
+        logger.info(f"Tool: Getting significant revisions for: {title}, limit: {limit}, min_significance: {min_significance}")
+        
+        # Convert empty strings to None for optional parameters
+        start_dt = start_datetime if start_datetime.strip() else None
+        end_dt = end_datetime if end_datetime.strip() else None
+        
+        significant = wikipedia_client.get_significant_revisions(
+            title, start_datetime=start_dt, end_datetime=end_dt,
+            limit=limit, min_significance=min_significance
+        )
+        return significant
+
     @server.resource("/search/{query}")
     def search(query: str) -> Dict[str, Any]:
         """Search Wikipedia for articles matching a query."""
@@ -194,5 +275,63 @@ def create_server(language: str = "en", country: Optional[str] = None, enable_ca
             "topic_within_article": topic_within_article,
             "facts": facts
         }
+
+    @server.resource("/revisions/{title}/limit/{limit}")
+    def page_revisions_resource(title: str, limit: int) -> Dict[str, Any]:
+        """Get the revision history for a Wikipedia page."""
+        logger.info(f"Resource: Getting revision history for: {title}, limit: {limit}")
+        return wikipedia_client.get_page_revisions(title, limit=limit)
+
+    @server.resource("/user/{username}/contributions/limit/{limit}")
+    def user_contributions_resource(username: str, limit: int) -> Dict[str, Any]:
+        """Get contributions made by a specific Wikipedia user."""
+        logger.info(f"Resource: Getting contributions for user: {username}, limit: {limit}")
+        return wikipedia_client.get_user_contributions(username, limit=limit)
+
+    @server.resource("/user/{username}/info")
+    def user_info_resource(username: str) -> Dict[str, Any]:
+        """Get detailed information about a Wikipedia user."""
+        logger.info(f"Resource: Getting user info for: {username}")
+        return wikipedia_client.get_user_info(username)
+
+    @server.resource("/revisions/compare/{from_rev}/{to_rev}")
+    def compare_revisions_resource(from_rev: int, to_rev: int) -> Dict[str, Any]:
+        """Compare two specific revisions."""
+        logger.info(f"Resource: Comparing revisions from {from_rev} to {to_rev}")
+        return wikipedia_client.compare_revisions(from_rev, to_rev)
+
+    @server.resource("/page/{title}/creator")
+    def page_creator_resource(title: str) -> Dict[str, Any]:
+        """Find who originally created a Wikipedia page."""
+        logger.info(f"Resource: Getting page creator for: {title}")
+        return wikipedia_client.get_page_creator(title)
+
+    @server.resource("/revision/{revid}")
+    def revision_details_resource(revid: int) -> Dict[str, Any]:
+        """Get detailed information about a specific revision."""
+        logger.info(f"Resource: Getting details for revision: {revid}")
+        return wikipedia_client.get_revision_details(revid)
+
+    @server.resource("/talk/{title}")
+    def talk_page_resource(title: str) -> Dict[str, Any]:
+        """Get the content and metadata of a Wikipedia talk page."""
+        logger.info(f"Resource: Getting talk page for: {title}")
+        return wikipedia_client.get_talk_page(title)
+
+    @server.resource("/activity/{title}/window/{window_size}/threshold/{z_threshold}")
+    def edit_activity_resource(title: str, window_size: str, z_threshold: float) -> Dict[str, Any]:
+        """Analyze edit activity patterns and detect spikes."""
+        logger.info(f"Resource: Analyzing edit activity for: {title}, window: {window_size}")
+        return wikipedia_client.analyze_edit_activity(
+            title, window_size=window_size, z_threshold=z_threshold
+        )
+
+    @server.resource("/significant/{title}/limit/{limit}/threshold/{min_significance}")
+    def significant_revisions_resource(title: str, limit: int, min_significance: float) -> Dict[str, Any]:
+        """Get the most significant revisions based on weighted scoring."""
+        logger.info(f"Resource: Getting significant revisions for: {title}, limit: {limit}")
+        return wikipedia_client.get_significant_revisions(
+            title, limit=limit, min_significance=min_significance
+        )
 
     return server 
